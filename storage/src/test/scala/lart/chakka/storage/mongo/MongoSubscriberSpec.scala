@@ -11,7 +11,7 @@ import org.mongodb.scala.bson.codecs.Macros._
 import org.mongodb.scala.model._
 import org.mongodb.scala.result.{ DeleteResult, InsertManyResult, InsertOneResult, UpdateResult }
 
-import scala.jdk.CollectionConverters.MapHasAsScala
+import scala.jdk.CollectionConverters._
 
 class MongoSubscriberSpec extends ChakkaTestKit {
 
@@ -178,6 +178,32 @@ class MongoSubscriberSpec extends ChakkaTestKit {
           }
         }
       }
+    }
+
+    "process bulk operations" in {
+      val receiver       = testKit.createTestProbe[MongoSubscriber.Response[BulkWriteResult]]()
+      val bulkOperations = personList.flatMap { person =>
+        List(
+          InsertOneModel(person),
+          UpdateOneModel(
+            Filters.equal("_id", person._id),
+            Updates.combine(
+              Updates.set("firstName", person.firstName.toUpperCase),
+              Updates.set("lastName", person.lastName.toUpperCase))),
+          DeleteOneModel(Filters.equal("_id", person._id)))
+      }
+      MongoSubscriber.subscribe(collection.bulkWrite(bulkOperations), receiver.ref)
+      val r              = receiver.expectMessageType[MongoSubscriber.DataGram[BulkWriteResult]]
+      assert(r.data.wasAcknowledged(), "but must be acknowledged")
+      r.data.getInsertedCount shouldBe 20
+      r.data.getMatchedCount shouldBe 20
+      r.data.getModifiedCount shouldBe 20
+      r.data.getDeletedCount shouldBe 20
+      r.data.getInserts.asScala
+        .map(_.getId.asObjectId().getValue.toHexString) should contain theSameElementsInOrderAs personList
+        .map(_._id.toHexString)
+      r.data.getUpserts.size() should be(0)
+      receiver.expectMessage(MongoSubscriber.Complete)
     }
   }
 }

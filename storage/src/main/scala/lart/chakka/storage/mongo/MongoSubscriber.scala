@@ -13,9 +13,10 @@ object MongoSubscriber {
 
   case object Complete extends Response[Nothing]
 
+  // TODO: Remove all println
   private class SubscriberImpl[T](replyTo: ActorRef[Response[T]], batchSize: Int = 1) extends Subscriber[T] {
-    var subscription: Subscription = _
-    var requests: Long             = 0
+    private var subscription: Subscription = _
+    private var requests: Long             = 0
 
     override def onSubscribe(s: Subscription): Unit = {
       println(s"onSubscribe. Current thread id : ${Thread.currentThread().getName}")
